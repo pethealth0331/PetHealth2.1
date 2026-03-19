@@ -1,13 +1,11 @@
 from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, EmailStr
-from motor.motor_asyncio import AsyncIOMotorClient
-from passlib.context import CryptContext
-from datetime import datetime, timedelta
-import jwt
-import os
 from fastapi.middleware.cors import CORSMiddleware
+from database import get_db
+from schemas import UserCreate, UserResponse, Token, UserLogin
+from security import get_password_hash, verify_password, create_access_token
+from datetime import datetime
 
-app = FastAPI(title="PetHealth - Servicio de Autenticación")
+app = FastAPI(title="PetHealth - Auth Service")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,62 +15,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SECRET_KEY = os.getenv("SECRET_KEY", "super_secreta_clave_pethealth_dev_2026!")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-MONGO_URI = os.getenv("MONGO_URI_AUTH", "mongodb://admin:secret@mongodb:27017/auth_db?authSource=admin")
-
-client = AsyncIOMotorClient(MONGO_URI)
-db = client.get_default_database()
-users_collection = db.users
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def hash_password(password):
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire_mins = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-    expire = datetime.utcnow() + timedelta(minutes=expire_mins)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-class UserCreate(BaseModel):
-    full_name: str
-    email: EmailStr
-    password: str
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-
-@app.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user: UserCreate):
-    existing_user = await users_collection.find_one({"email": user.email})
+    db = get_db()
+    # 1. Chequear si el usuario existe
+    existing_user = await db.users.find_one({"email": user.email})
     if existing_user:
-        raise HTTPException(status_code=400, detail="El correo ya se encuentra registrado.")
+        raise HTTPException(status_code=400, detail="El correo ya está registrado.")
     
-    user_dict = user.dict()
-    user_dict["password"] = hash_password(user.password)
+    # 2. Hashear y guardar
+    user_dict = {
+        "full_name": user.full_name,
+        "email": user.email,
+        "hashed_password": get_password_hash(user.password),
+        "created_at": datetime.utcnow()
+    }
+    result = await db.users.insert_one(user_dict)
     
-    await users_collection.insert_one(user_dict)
-    
-    access_token = create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return UserResponse(
+        id=str(result.inserted_id),
+        full_name=user.full_name,
+        email=user.email,
+        created_at=user_dict["created_at"]
+    )
 
-@app.post("/login", response_model=TokenResponse)
+@app.post("/login", response_model=Token)
 async def login(user: UserLogin):
-    db_user = await users_collection.find_one({"email": user.email})
+    db = get_db()
+    # 1. Buscar usuario
+    db_user = await db.users.find_one({"email": user.email})
     
-    if not db_user or not verify_password(user.password, db_user["password"]):
+    # 2. Verificar contraseña
+    if not db_user or not verify_password(user.password, db_user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
     
-    access_token = create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    # 3. Retornar JWT con el '_id' como 'sub'
+    access_token = create_access_token(data={"sub": str(db_user["_id"])})
+    return Token(access_token=access_token, token_type="bearer")

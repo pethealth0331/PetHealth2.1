@@ -1,18 +1,8 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: pethealth-mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=secret
-    networks:
-      - pethealth-network
+  # Base de Datos MongoDB Local eliminada del orquestador principal
+  # ya que utilizaremos el clúster remoto en MongoDB Atlas.
 
   auth-service:
     build:
@@ -21,10 +11,15 @@ services:
     container_name: pethealth-auth-service
     ports:
       - "3001:3001"
+    volumes:
+      # Montaje de volumen para "Hot Reload" inmediato durante el desarrollo
+      - ./apps/auth-service:/app
+      # Montaje de la carpeta de paquetes compartidos (Modelos Pydantic)
+      - ./packages:/packages
     env_file:
       - .env.development
-    depends_on:
-      - mongodb
+    # Sobreescribimos el command para forzar la recarga en caliente con uvicorn
+    command: uvicorn main:app --host 0.0.0.0 --port 3001 --reload
     networks:
       - pethealth-network
 
@@ -35,10 +30,12 @@ services:
     container_name: pethealth-appointment-service
     ports:
       - "3002:3002"
+    volumes:
+      - ./apps/appointment-service:/app
+      - ./packages:/packages
     env_file:
       - .env.development
-    depends_on:
-      - mongodb
+    command: uvicorn main:app --host 0.0.0.0 --port 3002 --reload
     networks:
       - pethealth-network
 
@@ -49,6 +46,10 @@ services:
     container_name: pethealth-frontend
     ports:
       - "5173:5173"
+    volumes:
+      - ./apps/frontend:/app
+      # Evitar que el volumen local sobreescriba los binarios de node_modules en Alpine
+      - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
       - VITE_API_AUTH_URL=http://localhost:3001
@@ -62,6 +63,3 @@ services:
 networks:
   pethealth-network:
     driver: bridge
-
-volumes:
-  mongodb_data:
