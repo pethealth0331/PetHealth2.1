@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: pethealth-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=secret
+    networks:
+      - pethealth-network
+
+  auth-service:
+    build:
+      context: ./apps/auth-service
+      dockerfile: Dockerfile
+    container_name: pethealth-auth-service
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env.development
+    depends_on:
+      - mongodb
+    networks:
+      - pethealth-network
+
+  appointment-service:
+    build:
+      context: ./apps/appointment-service
+      dockerfile: Dockerfile
+    container_name: pethealth-appointment-service
+    ports:
+      - "3002:3002"
+    env_file:
+      - .env.development
+    depends_on:
+      - mongodb
+    networks:
+      - pethealth-network
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    container_name: pethealth-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_API_AUTH_URL=http://localhost:3001
+      - VITE_API_APPOINTMENTS_URL=http://localhost:3002
+    depends_on:
+      - auth-service
+      - appointment-service
+    networks:
+      - pethealth-network
+
+networks:
+  pethealth-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:

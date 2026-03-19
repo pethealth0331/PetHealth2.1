@@ -1,0 +1,29 @@
+# Ignorar directorios de dependencias pesadas
+node_modules/
+apps/*/node_modules/
+packages/*/node_modules/
+
+# Ignorar binarios y carpetas de compilación
+dist/
+build/
+.turbo/
+apps/*/dist/
+apps/*/build/
+packages/*/dist/
+packages/*/build/
+
+# Ignorar archivos temporales y logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+
+# Ignorar variables de entorno de producción o sensibles
+.env
+.env.production
+.env.local
+
+# EXCEPCIONES: Permitir sincronización de configuración base de desarrollo
+!.env.development
+!docker-compose.yml
