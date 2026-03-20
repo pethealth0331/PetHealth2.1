@@ -1,0 +1,16 @@
+# Ignorar todas las variables de entorno para que nunca se suban a GitHub
+.env
+.env.*
+!.env.example
+
+# Carpetas de desarrollo
+node_modules/
+dist/
+build/
+.turbo/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
